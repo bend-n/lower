@@ -1,0 +1,16 @@
+[package]
+name = "lower"
+version = "0.1.0"
+authors = ["bend-n <bend.n@outlook.com>"]
+description = "desugar math where the compiler wont"
+edition = "2021"
+repository = "https://github.com/bend-n/lower.git"
+license = "MIT"
+
+[dependencies]
+proc-macro2 = "1.0.78"
+quote = "1.0.32"
+syn = "2.0.15"
+
+[lib]
+proc_macro = true
