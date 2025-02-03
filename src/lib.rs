@@ -389,48 +389,43 @@ fn walk_item<T: Sub>(x: Item) -> TokenStream {
     }
 }
 
-/// Lower math to method calls.
-/// ```
-/// # use std::ops::*;
-/// let [a, b, c] = [5i32, 6, 7];
-/// assert_eq!(lower_macros::math! { a * *&b + -c }, a * *&b + -c);
-/// // expands to
-/// // a.mul((&b).deref()).add(c.neg())
-/// ```
-#[proc_macro]
-pub fn math(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    match parse::<Expr>(input.clone())
-        .map(walk::<Basic>)
-        .map_err(|x| x.to_compile_error().into_token_stream())
-    {
-        Ok(x) => x,
-        Err(e) => parse::<Stmt>(input).map(walk_stmt::<Basic>).unwrap_or(e),
-    }
-    .into()
+macro_rules! walk {
+    ($input:ident,$t:ty) => {
+        match parse::<Expr>($input.clone())
+            .map(walk::<$t>)
+            .map_err(|x| x.to_compile_error().into_token_stream())
+        {
+            Ok(x) => x,
+            Err(e) => parse::<Stmt>($input).map(walk_stmt::<$t>).unwrap_or(e),
+        }
+        .into()
+    };
 }
 
 #[proc_macro]
-pub fn algebraic(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    match parse::<Expr>(input.clone())
-        .map(walk::<Algebraic>)
-        .map_err(|x| x.to_compile_error().into_token_stream())
-    {
-        Ok(x) => x,
-        Err(e) => parse::<Stmt>(input)
-            .map(walk_stmt::<Algebraic>)
-            .unwrap_or(e),
-    }
-    .into()
+pub fn math(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    walk!(input, Basic)
 }
 
 #[proc_macro]
 pub fn fast(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    match parse::<Expr>(input.clone())
-        .map(walk::<Fast>)
-        .map_err(|x| x.to_compile_error().into_token_stream())
-    {
-        Ok(x) => x,
-        Err(e) => parse::<Stmt>(input).map(walk_stmt::<Fast>).unwrap_or(e),
+    walk!(input, Fast)
+}
+
+#[proc_macro]
+pub fn algebraic(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    walk!(input, Algebraic)
+}
+
+#[proc_macro_attribute]
+pub fn apply(
+    args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match &*args.to_string() {
+        "basic" | "" => math(input),
+        "fast" => fast(input),
+        "algebraic" => algebraic(input),
+        _ => quote! { compile_error!("type must be {fast, basic, algebraic}") }.into(),
     }
-    .into()
 }
