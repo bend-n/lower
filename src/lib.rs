@@ -159,7 +159,7 @@ fn walk<T: Sub>(e: Expr) -> TokenStream {
             start, limits, end, ..
         }) => {
             let (start, end) = (start.map(|x| walk(*x)), end.map(|x| walk(*x)));
-            quote!(#start #limits #end)
+            quote!((#start #limits #end))
         }
         Expr::Return(ExprReturn { expr, .. }) => {
             let expr = expr.map(|x| walk(*x));
@@ -360,7 +360,7 @@ fn walk_item<T: Sub>(x: Item) -> TokenStream {
                 }
                 e => quote!(#e),
             });
-            let trait_ = trait_.map(|(n, pat, _)| quote!(#n #pat));
+            let trait_ = trait_.map(|(n, pat, fr)| quote!(#n #pat #fr));
             quote!(#(#attrs)* #unsafety #defaultness impl #generics #trait_ #self_ty { #(#items)* })
         }
         Item::Mod(ItemMod {
