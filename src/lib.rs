@@ -207,6 +207,11 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
         }) => {
             quote_with!(cond = walk(*cond); body =map_block(body) => #label while #cond #body)
         }
+        Expr::Index(ExprIndex { expr, index, .. }) => {
+            let expr = walk(*expr);
+            let index = walk(*index);
+            quote!(#expr [ #index ])
+        }
         Expr::Loop(ExprLoop { label, body, .. }) => {
             quote_with!(body =map_block(body) => #label loop #body)
         }
