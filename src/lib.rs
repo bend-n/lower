@@ -12,13 +12,13 @@ macro_rules! quote_with {
     }};
 }
 trait Sub {
-    fn sub_bin(op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream;
-    fn sub_unop(op: UnOp, x: TokenStream) -> TokenStream;
+    fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream;
+    fn sub_unop(&self, op: UnOp, x: TokenStream) -> TokenStream;
 }
 
 struct Basic;
 impl Sub for Basic {
-    fn sub_bin(op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
+    fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
         use syn::BinOp::*;
         match op {
             Add(_) => quote!((#left).add(#right)),
@@ -46,7 +46,7 @@ impl Sub for Basic {
         }
     }
 
-    fn sub_unop(op: UnOp, x: TokenStream) -> TokenStream {
+    fn sub_unop(&self, op: UnOp, x: TokenStream) -> TokenStream {
         match op {
             UnOp::Deref(_) => quote!((#x).deref()),
             UnOp::Not(_) => quote!((#x).not()),
@@ -60,9 +60,34 @@ impl Sub for Basic {
     }
 }
 
+struct Wrapping;
+impl Sub for Wrapping {
+    fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
+        use syn::BinOp::*;
+        match op {
+            Add(_) => quote!((#left).wrapping_add(#right)),
+            Sub(_) => quote!((#left).wrapping_sub(#right)),
+            Mul(_) => quote!((#left).wrapping_mul(#right)),
+            Div(_) => quote!((#left).wrapping_div(#right)),
+            Rem(_) => quote!((#left).wrapping_rem(#right)),
+            Shl(_) => quote!((#left).wrapping_shl(#right)),
+            Shr(_) => quote!((#left).wrapping_shr(#right)),
+
+            _ => quote!((#left) #op (#right)),
+        }
+    }
+
+    fn sub_unop(&self, op: UnOp, x: TokenStream) -> TokenStream {
+        match op {
+            UnOp::Neg(_) => quote!((#x).wrapping_neg()),
+            _ => quote!(#op #x),
+        }
+    }
+}
+
 struct Algebraic;
 impl Sub for Algebraic {
-    fn sub_bin(op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
+    fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
         use syn::BinOp::*;
         match op {
             Add(_) => quote!(core::intrinsics::fadd_algebraic(#left, #right)),
@@ -75,14 +100,14 @@ impl Sub for Algebraic {
         }
     }
 
-    fn sub_unop(op: UnOp, x: TokenStream) -> TokenStream {
+    fn sub_unop(&self, op: UnOp, x: TokenStream) -> TokenStream {
         quote!(#op #x)
     }
 }
 
 struct Fast;
 impl Sub for Fast {
-    fn sub_bin(op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
+    fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
         use syn::BinOp::*;
         match op {
             Add(_) => quote!(core::intrinsics::fadd_fast(#left, #right)),
@@ -96,22 +121,23 @@ impl Sub for Fast {
         }
     }
 
-    fn sub_unop(op: UnOp, x: TokenStream) -> TokenStream {
+    fn sub_unop(&self, op: UnOp, x: TokenStream) -> TokenStream {
         quote!(#op #x)
     }
 }
 
-fn walk<T: Sub>(e: Expr) -> TokenStream {
-    let walk = walk::<T>;
+fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
+    let walk = |e| walk(sub, e);
+    let map_block = |b| map_block(sub, b);
     match e {
         Expr::Binary(ExprBinary {
             left, op, right, ..
         }) => {
             let left = walk(*left);
             let right = walk(*right);
-            T::sub_bin(op, left, right)
+            sub.sub_bin(op, left, right)
         }
-        Expr::Unary(ExprUnary { op, expr, .. }) => T::sub_unop(op, walk(*expr)),
+        Expr::Unary(ExprUnary { op, expr, .. }) => sub.sub_unop(op, walk(*expr)),
         Expr::Break(ExprBreak {
             label,
             expr: Some(expr),
@@ -146,14 +172,14 @@ fn walk<T: Sub>(e: Expr) -> TokenStream {
             body,
             ..
         }) => {
-            let (expr, body) = (walk(*expr), map_block::<T>(body));
+            let (expr, body) = (walk(*expr), map_block(body));
             quote!(#label for #pat in #expr #body)
         }
         Expr::Let(ExprLet { pat, expr, .. }) => {
             quote_with!(expr = walk(*expr) => let #pat = #expr)
         }
         Expr::Const(ExprConst { block, .. }) => {
-            quote_with!(block = map_block::<T>(block) => const #block)
+            quote_with!(block =map_block(block) => const #block)
         }
         Expr::Range(ExprRange {
             start, limits, end, ..
@@ -170,19 +196,19 @@ fn walk<T: Sub>(e: Expr) -> TokenStream {
             quote!(#expr ?)
         }
         Expr::TryBlock(ExprTryBlock { block, .. }) => {
-            let block = map_block::<T>(block);
+            let block = map_block(block);
             quote!(try #block)
         }
         Expr::Unsafe(ExprUnsafe { block, .. }) => {
-            quote_with!(block = map_block::<T>(block) => unsafe #block)
+            quote_with!(block =map_block(block) => unsafe #block)
         }
         Expr::While(ExprWhile {
             label, cond, body, ..
         }) => {
-            quote_with!(cond = walk(*cond); body = map_block::<T>(body) => #label while #cond #body)
+            quote_with!(cond = walk(*cond); body =map_block(body) => #label while #cond #body)
         }
         Expr::Loop(ExprLoop { label, body, .. }) => {
-            quote_with!(body = map_block::<T>(body) => #label loop #body)
+            quote_with!(body =map_block(body) => #label loop #body)
         }
         Expr::Reference(ExprReference {
             mutability, expr, ..
@@ -208,13 +234,13 @@ fn walk<T: Sub>(e: Expr) -> TokenStream {
             ..
         }) => {
             let (cond, then_branch, else_branch) =
-                (walk(*cond), map_block::<T>(then_branch), walk(*else_branch));
+                (walk(*cond), map_block(then_branch), walk(*else_branch));
             quote!(if #cond #then_branch else #else_branch)
         }
         Expr::If(ExprIf {
             cond, then_branch, ..
         }) => {
-            let (cond, then_branch) = (walk(*cond), map_block::<T>(then_branch));
+            let (cond, then_branch) = (walk(*cond), map_block(then_branch));
             quote!(if #cond #then_branch)
         }
         Expr::Async(ExprAsync {
@@ -223,7 +249,7 @@ fn walk<T: Sub>(e: Expr) -> TokenStream {
             block,
             ..
         }) => {
-            let block = map_block::<T>(block);
+            let block = map_block(block);
             quote!(#(#attrs)* async #capture #block)
         }
         Expr::Await(ExprAwait { base, .. }) => {
@@ -256,21 +282,21 @@ fn walk<T: Sub>(e: Expr) -> TokenStream {
             label: Some(label),
             ..
         }) => {
-            let b = map_block::<T>(block);
+            let b = map_block(block);
             quote! { #label: #b }
         }
-        Expr::Block(ExprBlock { block, .. }) => map_block::<T>(block),
+        Expr::Block(ExprBlock { block, .. }) => map_block(block),
         e => quote!(#e),
     }
 }
 
-fn map_block<T: Sub>(Block { stmts, .. }: Block) -> TokenStream {
-    let stmts = stmts.into_iter().map(walk_stmt::<T>);
+fn map_block(sub: &impl Sub, Block { stmts, .. }: Block) -> TokenStream {
+    let stmts = stmts.into_iter().map(|x| walk_stmt(sub, x));
     quote! { { #(#stmts)* } }
 }
 
-fn walk_stmt<T: Sub>(x: Stmt) -> TokenStream {
-    let walk = walk::<T>;
+fn walk_stmt(sub: &impl Sub, x: Stmt) -> TokenStream {
+    let walk = |e| walk(sub, e);
     match x {
         Stmt::Local(Local {
             pat,
@@ -294,7 +320,7 @@ fn walk_stmt<T: Sub>(x: Stmt) -> TokenStream {
             let expr = walk(*expr);
             quote!(let #pat = #expr;)
         }
-        Stmt::Item(x) => walk_item::<T>(x),
+        Stmt::Item(x) => walk_item(sub, x),
         Stmt::Expr(e, t) => {
             let e = walk(e);
             quote!(#e #t)
@@ -303,8 +329,8 @@ fn walk_stmt<T: Sub>(x: Stmt) -> TokenStream {
     }
 }
 
-fn walk_item<T: Sub>(x: Item) -> TokenStream {
-    let walk = walk::<T>;
+fn walk_item(sub: &impl Sub, x: Item) -> TokenStream {
+    let walk = |e| walk(sub, e);
     match x {
         Item::Const(ItemConst {
             vis,
@@ -322,7 +348,7 @@ fn walk_item<T: Sub>(x: Item) -> TokenStream {
             sig,
             block,
         }) => {
-            let block = map_block::<T>(*block);
+            let block = map_block(sub, *block);
             quote!( #(#attrs)* #vis #sig #block)
         }
         Item::Impl(ItemImpl {
@@ -355,7 +381,7 @@ fn walk_item<T: Sub>(x: Item) -> TokenStream {
                     sig,
                     block,
                 }) => {
-                    let block = map_block::<T>(block);
+                    let block = map_block(sub, block);
                     quote!(#(#attrs)* #vis #defaultness #sig #block)
                 }
                 e => quote!(#e),
@@ -370,7 +396,7 @@ fn walk_item<T: Sub>(x: Item) -> TokenStream {
             content: Some((_, content)),
             ..
         }) => {
-            let content = content.into_iter().map(walk_item::<T>);
+            let content = content.into_iter().map(|x| walk_item(sub, x));
             quote!(#(#attrs)* #vis mod #ident { #(#content)* })
         }
         Item::Static(ItemStatic {
@@ -390,13 +416,15 @@ fn walk_item<T: Sub>(x: Item) -> TokenStream {
 }
 
 macro_rules! walk {
-    ($input:ident,$t:ty) => {
+    ($input:ident,$t:expr) => {
         match parse::<Expr>($input.clone())
-            .map(walk::<$t>)
+            .map(|x| walk(&$t, x))
             .map_err(|x| x.to_compile_error().into_token_stream())
         {
             Ok(x) => x,
-            Err(e) => parse::<Stmt>($input).map(walk_stmt::<$t>).unwrap_or(e),
+            Err(e) => parse::<Stmt>($input)
+                .map(|x| walk_stmt(&$t, x))
+                .unwrap_or(e),
         }
         .into()
     };
@@ -404,17 +432,22 @@ macro_rules! walk {
 
 #[proc_macro]
 pub fn math(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    walk!(input, Basic)
+    walk!(input, Basic {})
 }
 
 #[proc_macro]
 pub fn fast(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    walk!(input, Fast)
+    walk!(input, Fast {})
 }
 
 #[proc_macro]
 pub fn algebraic(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    walk!(input, Algebraic)
+    walk!(input, Algebraic {})
+}
+
+#[proc_macro]
+pub fn wrapping(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    walk!(input, Wrapping {})
 }
 
 #[proc_macro_attribute]
@@ -426,6 +459,7 @@ pub fn apply(
         "basic" | "" => math(input),
         "fast" => fast(input),
         "algebraic" => algebraic(input),
-        _ => quote! { compile_error!("type must be {fast, basic, algebraic}") }.into(),
+        "wrapping" => wrapping(input),
+        _ => quote! { compile_error!("type must be {fast, basic, algebraic, wrapping}") }.into(),
     }
 }
