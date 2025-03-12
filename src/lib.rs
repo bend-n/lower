@@ -73,6 +73,14 @@ impl Sub for Wrapping {
             Shl(_) => quote!((#left).wrapping_shl(#right)),
             Shr(_) => quote!((#left).wrapping_shr(#right)),
 
+            SubAssign(_) => quote!(#left = #left.wrapping_sub(#right)),
+            AddAssign(_) => quote!(#left = #left.wrapping_add(#right)),
+            MulAssign(_) => quote!(#left = #left.wrapping_mul(#right)),
+            DivAssign(_) => quote!(#left = #left.wrapping_div(#right)),
+            RemAssign(_) => quote!(#left = #left.wrapping_rem(#right)),
+            ShlAssign(_) => quote!(#left = #left.wrapping_shl(#right)),
+            ShrAssign(_) => quote!(#left = #left.wrapping_shr(#right)),
+
             _ => quote!((#left) #op (#right)),
         }
     }
@@ -97,6 +105,14 @@ impl Sub for Saturating {
             Rem(_) => quote!((#left).saturating_rem(#right)),
             Shl(_) => quote!((#left).saturating_shl(#right)),
             Shr(_) => quote!((#left).saturating_shr(#right)),
+
+            SubAssign(_) => quote!(#left = #left.saturating_sub(#right)),
+            AddAssign(_) => quote!(#left = #left.saturating_add(#right)),
+            MulAssign(_) => quote!(#left = #left.saturating_mul(#right)),
+            DivAssign(_) => quote!(#left = #left.saturating_div(#right)),
+            RemAssign(_) => quote!(#left = #left.saturating_rem(#right)),
+            ShlAssign(_) => quote!(#left = #left.saturating_shl(#right)),
+            ShrAssign(_) => quote!(#left = #left.saturating_shr(#right)),
 
             _ => quote!((#left) #op (#right)),
         }
