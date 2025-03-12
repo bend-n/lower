@@ -85,6 +85,31 @@ impl Sub for Wrapping {
     }
 }
 
+struct Saturating;
+impl Sub for Saturating {
+    fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
+        use syn::BinOp::*;
+        match op {
+            Add(_) => quote!((#left).saturating_add(#right)),
+            Sub(_) => quote!((#left).saturating_sub(#right)),
+            Mul(_) => quote!((#left).saturating_mul(#right)),
+            Div(_) => quote!((#left).saturating_div(#right)),
+            Rem(_) => quote!((#left).saturating_rem(#right)),
+            Shl(_) => quote!((#left).saturating_shl(#right)),
+            Shr(_) => quote!((#left).saturating_shr(#right)),
+
+            _ => quote!((#left) #op (#right)),
+        }
+    }
+
+    fn sub_unop(&self, op: UnOp, x: TokenStream) -> TokenStream {
+        match op {
+            UnOp::Neg(_) => quote!((#x).saturating_neg()),
+            _ => quote!(#op #x),
+        }
+    }
+}
+
 struct Algebraic;
 impl Sub for Algebraic {
     fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
@@ -163,7 +188,7 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
             ..
         }) => {
             let body = walk(*body);
-            quote!(#lifetimes #constness #movability #asyncness #capture |#inputs| #output #body)
+            quote!(#lifetimes #constness #movability #asyncness #capture |#inputs| #output { #body })
         }
         Expr::ForLoop(ExprForLoop {
             label,
@@ -455,6 +480,11 @@ pub fn wrapping(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     walk!(input, Wrapping {})
 }
 
+#[proc_macro]
+pub fn saturating(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    walk!(input, Saturating {})
+}
+
 #[proc_macro_attribute]
 pub fn apply(
     args: proc_macro::TokenStream,
@@ -465,6 +495,10 @@ pub fn apply(
         "fast" => fast(input),
         "algebraic" => algebraic(input),
         "wrapping" => wrapping(input),
-        _ => quote! { compile_error!("type must be {fast, basic, algebraic, wrapping}") }.into(),
+        "saturating" => saturating(input),
+        _ => {
+            quote! { compile_error!("type must be {fast, basic, algebraic, wrapping, saturating}") }
+                .into()
+        }
     }
 }
