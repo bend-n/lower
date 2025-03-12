@@ -273,6 +273,29 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
             let args = args.into_iter().map(walk);
             quote!(#receiver . #method #turbofish (#(#args,)*))
         }
+        Expr::Match(ExprMatch { expr, arms, .. }) => {
+            let arms = arms.into_iter().map(
+                |Arm {
+                     pat,
+                     guard,
+
+                     body,
+                     //  comma,
+                     ..
+                 }| {
+                    let b = walk(*body);
+                    let guard = match guard {
+                        Some((i, x)) => {
+                            let z = walk(*x);
+                            quote! { #i #z }
+                        }
+                        None => quote! {},
+                    };
+                    quote! { #pat #guard => { #b } }
+                },
+            );
+            quote!(match #expr { #(#arms)* })
+        }
         Expr::If(ExprIf {
             cond,
             then_branch,
