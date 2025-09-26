@@ -355,6 +355,12 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
             quote! { #label: #b }
         }
         Expr::Block(ExprBlock { block, .. }) => map_block(block),
+        Expr::Cast(ExprCast {
+            expr, as_token, ty, ..
+        }) => {
+            let e = walk(*expr);
+            quote! { #e #as_token #ty }
+        }
         e => quote!(#e),
     }
 }
