@@ -2,7 +2,7 @@
 //!
 //! provides a handy macro for converting `a + b` to `a.add(b)` for when you cant easily overload the `Add` trait.
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::{spanned::Spanned, *};
 
 macro_rules! quote_with {
@@ -81,7 +81,20 @@ impl Sub for Wrapping {
             ShlAssign(_) => quote!(#left = #left.wrapping_shl(#right)),
             ShrAssign(_) => quote!(#left = #left.wrapping_shr(#right)),
 
-            _ => quote!((#left) #op (#right)),
+            _ => match (|| {
+                syn::Result::Ok(
+                    ExprBinary {
+                        attrs: Default::default(),
+                        left: syn::parse(left.into())?,
+                        op,
+                        right: syn::parse(right.into())?,
+                    }
+                    .to_token_stream(),
+                )
+            })() {
+                Ok(x) => x,
+                Err(e) => e.into_compile_error(),
+            },
         }
     }
 
@@ -114,7 +127,20 @@ impl Sub for Saturating {
             ShlAssign(_) => quote!(#left = #left.saturating_shl(#right)),
             ShrAssign(_) => quote!(#left = #left.saturating_shr(#right)),
 
-            _ => quote!((#left) #op (#right)),
+            _ => match (|| {
+                syn::Result::Ok(
+                    ExprBinary {
+                        attrs: Default::default(),
+                        left: syn::parse(left.into())?,
+                        op,
+                        right: syn::parse(right.into())?,
+                    }
+                    .to_token_stream(),
+                )
+            })() {
+                Ok(x) => x,
+                Err(e) => e.into_compile_error(),
+            },
         }
     }
 
@@ -136,8 +162,21 @@ impl Sub for Algebraic {
             Mul(_) => quote!(core::intrinsics::fmul_algebraic(#left, #right)),
             Div(_) => quote!(core::intrinsics::fdiv_algebraic(#left, #right)),
             Rem(_) => quote!(core::intrinsics::frem_algebraic(#left, #right)),
-            And(_) => quote!(core::intrinsics::fand_algebraic(#left, #right)),
-            _ => quote!((#left) #op (#right)),
+
+            _ => match (|| {
+                syn::Result::Ok(
+                    ExprBinary {
+                        attrs: Default::default(),
+                        left: syn::parse(left.into())?,
+                        op,
+                        right: syn::parse(right.into())?,
+                    }
+                    .to_token_stream(),
+                )
+            })() {
+                Ok(x) => x,
+                Err(e) => e.into_compile_error(),
+            },
         }
     }
 
@@ -156,9 +195,22 @@ impl Sub for Fast {
             Mul(_) => quote!(core::intrinsics::fmul_fast(#left, #right)),
             Div(_) => quote!(core::intrinsics::fdiv_fast(#left, #right)),
             Rem(_) => quote!(core::intrinsics::frem_fast(#left, #right)),
-            And(_) => quote!(core::intrinsics::fand_fast(#left, #right)),
             Eq(_) => quote!(/* eq */ ((#left) + 0.0).to_bits() == ((#right) + 0.0).to_bits()),
-            _ => quote!((#left) #op (#right)),
+
+            _ => match (|| {
+                syn::Result::Ok(
+                    ExprBinary {
+                        attrs: Default::default(),
+                        left: syn::parse(left.into())?,
+                        op,
+                        right: syn::parse(right.into())?,
+                    }
+                    .to_token_stream(),
+                )
+            })() {
+                Ok(x) => x,
+                Err(e) => e.into_compile_error(),
+            },
         }
     }
 

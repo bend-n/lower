@@ -1,9 +1,9 @@
 [package]
 name = "lower-macros"
-version = "0.2.9"
+version = "0.2.10"
 authors = ["bend-n <bend.n@outlook.com>"]
 description = "desugar math where the compiler wont"
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/bend-n/lower.git"
 license = "MIT"
 
