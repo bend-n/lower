@@ -48,7 +48,7 @@ impl Sub for Basic {
 
     fn sub_unop(&self, op: UnOp, x: TokenStream) -> TokenStream {
         match op {
-            UnOp::Deref(_) => quote!((#x).deref()),
+            UnOp::Deref(_) => quote!((*#x)),
             UnOp::Not(_) => quote!((#x).not()),
             UnOp::Neg(_) => quote!((#x).neg()),
             e => Error::new(
@@ -100,6 +100,7 @@ impl Sub for Wrapping {
 
     fn sub_unop(&self, op: UnOp, x: TokenStream) -> TokenStream {
         match op {
+            UnOp::Deref(_) => quote!((*#x)),
             UnOp::Neg(_) => quote!((#x).wrapping_neg()),
             _ => quote!(#op #x),
         }
@@ -146,6 +147,7 @@ impl Sub for Saturating {
 
     fn sub_unop(&self, op: UnOp, x: TokenStream) -> TokenStream {
         match op {
+            UnOp::Deref(_) => quote!((*#x)),
             UnOp::Neg(_) => quote!((#x).saturating_neg()),
             _ => quote!(#op #x),
         }
@@ -379,7 +381,7 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
         }
         Expr::Assign(ExprAssign { left, right, .. }) => {
             let (left, right) = (walk(*left), walk(*right));
-            quote!(#left = #right;)
+            quote!(#left = #right)
         }
         Expr::Paren(ExprParen { expr, .. }) => {
             let expr = walk(*expr);

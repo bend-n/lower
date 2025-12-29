@@ -1,6 +1,6 @@
 [package]
 name = "lower-macros"
-version = "0.2.10"
+version = "0.2.11"
 authors = ["bend-n <bend.n@outlook.com>"]
 description = "desugar math where the compiler wont"
 edition = "2024"
