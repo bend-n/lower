@@ -284,7 +284,7 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
         }
         Expr::Return(ExprReturn { expr, .. }) => {
             let expr = expr.map(|x| walk(*x));
-            quote!(return #expr;)
+            quote!(return #expr)
         }
         Expr::Try(ExprTry { expr, .. }) => {
             let expr = walk(*expr);
