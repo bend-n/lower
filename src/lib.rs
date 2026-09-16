@@ -249,7 +249,7 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
         Expr::Closure(ExprClosure {
             lifetimes,
             constness,
-            movability,
+            modifiers: _modifiers,
             asyncness,
             capture,
             inputs,
@@ -258,7 +258,7 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
             ..
         }) => {
             let body = walk(*body);
-            quote!(#lifetimes #constness #movability #asyncness #capture |#inputs| #output { #body })
+            quote!(#lifetimes #constness #asyncness #capture |#inputs| #output { #body })
         }
         Expr::ForLoop(ExprForLoop {
             label,
@@ -328,26 +328,10 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
             quote!(#receiver . #method #turbofish (#(#args,)*))
         }
         Expr::Match(ExprMatch { expr, arms, .. }) => {
-            let arms = arms.into_iter().map(
-                |Arm {
-                     pat,
-                     guard,
-
-                     body,
-                     //  comma,
-                     ..
-                 }| {
-                    let b = walk(*body);
-                    let guard = match guard {
-                        Some((i, x)) => {
-                            let z = walk(*x);
-                            quote! { #i #z }
-                        }
-                        None => quote! {},
-                    };
-                    quote! { #pat #guard => { #b } }
-                },
-            );
+            let arms = arms.into_iter().map(|Arm { pat, body, .. }| {
+                let b = walk(*body);
+                quote! { #pat => { #b } }
+            });
             quote!(match #expr { #(#arms)* })
         }
         Expr::If(ExprIf {
@@ -385,7 +369,7 @@ fn walk(sub: &impl Sub, e: Expr) -> TokenStream {
         }
         Expr::Paren(ExprParen { expr, .. }) => {
             let expr = walk(*expr);
-            quote!(#expr)
+            quote!((#expr))
         }
         Expr::Tuple(ExprTuple { elems, .. }) => {
             let ts = elems.into_iter().map(walk);
@@ -474,16 +458,22 @@ fn walk_item(sub: &impl Sub, x: Item) -> TokenStream {
         Item::Fn(ItemFn {
             vis,
             attrs,
+            modifiers: FnModifiers { defaultness, .. },
             sig,
             block,
         }) => {
             let block = map_block(sub, *block);
-            quote!( #(#attrs)* #vis #sig #block)
+            quote!( #(#attrs)* #vis #defaultness #sig #block)
         }
         Item::Impl(ItemImpl {
             attrs,
             unsafety,
-            defaultness,
+            modifiers:
+                ImplModifiers {
+                    defaultness,
+                    polarity,
+                    ..
+                },
             generics,
             trait_,
             self_ty,
@@ -494,7 +484,7 @@ fn walk_item(sub: &impl Sub, x: Item) -> TokenStream {
                 ImplItem::Const(ImplItemConst {
                     vis,
                     attrs,
-                    defaultness,
+                    modifiers: ConstModifiers { defaultness, .. },
                     ident,
                     ty,
                     expr,
@@ -506,7 +496,7 @@ fn walk_item(sub: &impl Sub, x: Item) -> TokenStream {
                 ImplItem::Fn(ImplItemFn {
                     attrs,
                     vis,
-                    defaultness,
+                    modifiers: FnModifiers { defaultness, .. },
                     sig,
                     block,
                 }) => {
@@ -515,8 +505,8 @@ fn walk_item(sub: &impl Sub, x: Item) -> TokenStream {
                 }
                 e => quote!(#e),
             });
-            let trait_ = trait_.map(|(n, pat, fr)| quote!(#n #pat #fr));
-            quote!(#(#attrs)* #unsafety #defaultness impl #generics #trait_ #self_ty { #(#items)* })
+            let trait_ = trait_.map(|(n, fr)| quote!(#n for #fr));
+            quote!(#(#attrs)* #unsafety #polarity #defaultness impl #generics #trait_ #self_ty { #(#items)* })
         }
         Item::Mod(ItemMod {
             attrs,
