@@ -3,7 +3,7 @@
 //! provides a handy macro for converting `a + b` to `a.add(b)` for when you cant easily overload the `Add` trait.
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
-use syn::{spanned::Spanned, *};
+use syn::{parse::Parse, spanned::Spanned, *};
 
 macro_rules! quote_with {
     ($($k: ident = $v: expr);+ => $($tt:tt)+) => {{
@@ -59,11 +59,63 @@ impl Sub for Basic {
         }
     }
 }
-
-struct Wrapping;
+fn contains(list: &[BinOp], op: BinOp) -> bool {
+    use syn::BinOp::*;
+    list.iter().any(|x| match (x, op) {
+        (Add(_), Add(_))
+        | (Sub(_), Sub(_))
+        | (Mul(_), Mul(_))
+        | (Div(_), Div(_))
+        | (Rem(_), Rem(_))
+        | (And(_), And(_))
+        | (Or(_), Or(_))
+        | (BitXor(_), BitXor(_))
+        | (BitAnd(_), BitAnd(_))
+        | (BitOr(_), BitOr(_))
+        | (Shl(_), Shl(_))
+        | (Shr(_), Shr(_))
+        | (Eq(_), Eq(_))
+        | (Lt(_), Lt(_))
+        | (Le(_), Le(_))
+        | (Ne(_), Ne(_))
+        | (Ge(_), Ge(_))
+        | (Gt(_), Gt(_))
+        | (AddAssign(_), AddAssign(_))
+        | (SubAssign(_), SubAssign(_))
+        | (MulAssign(_), MulAssign(_))
+        | (DivAssign(_), DivAssign(_))
+        | (RemAssign(_), RemAssign(_))
+        | (BitXorAssign(_), BitXorAssign(_))
+        | (BitAndAssign(_), BitAndAssign(_))
+        | (BitOrAssign(_), BitOrAssign(_))
+        | (ShlAssign(_), ShlAssign(_))
+        | (ShrAssign(_), ShrAssign(_)) => true,
+        _ => false,
+    })
+}
+fn r(op: BinOp, left: TokenStream, right: TokenStream) -> proc_macro2::TokenStream {
+    match (|| {
+        syn::Result::Ok(
+            ExprBinary {
+                attrs: Default::default(),
+                left: syn::parse(left.into())?,
+                op,
+                right: syn::parse(right.into())?,
+            }
+            .to_token_stream(),
+        )
+    })() {
+        Ok(x) => x,
+        Err(e) => e.into_compile_error(),
+    }
+}
+struct Wrapping(Vec<BinOp>);
 impl Sub for Wrapping {
     fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
         use syn::BinOp::*;
+        if contains(&self.0, op) {
+            return r(op, left, right);
+        }
         match op {
             Add(_) => quote!((#left).wrapping_add(#right)),
             Sub(_) => quote!((#left).wrapping_sub(#right)),
@@ -81,20 +133,7 @@ impl Sub for Wrapping {
             ShlAssign(_) => quote!(#left = #left.wrapping_shl(#right)),
             ShrAssign(_) => quote!(#left = #left.wrapping_shr(#right)),
 
-            _ => match (|| {
-                syn::Result::Ok(
-                    ExprBinary {
-                        attrs: Default::default(),
-                        left: syn::parse(left.into())?,
-                        op,
-                        right: syn::parse(right.into())?,
-                    }
-                    .to_token_stream(),
-                )
-            })() {
-                Ok(x) => x,
-                Err(e) => e.into_compile_error(),
-            },
+            _ => r(op, left, right),
         }
     }
 
@@ -107,10 +146,13 @@ impl Sub for Wrapping {
     }
 }
 
-struct Saturating;
+struct Saturating(Vec<BinOp>);
 impl Sub for Saturating {
     fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
         use syn::BinOp::*;
+        if contains(&self.0, op) {
+            return r(op, left, right);
+        }
         match op {
             Add(_) => quote!((#left).saturating_add(#right)),
             Sub(_) => quote!((#left).saturating_sub(#right)),
@@ -127,21 +169,7 @@ impl Sub for Saturating {
             RemAssign(_) => quote!(#left = #left.saturating_rem(#right)),
             ShlAssign(_) => quote!(#left = #left.saturating_shl(#right)),
             ShrAssign(_) => quote!(#left = #left.saturating_shr(#right)),
-
-            _ => match (|| {
-                syn::Result::Ok(
-                    ExprBinary {
-                        attrs: Default::default(),
-                        left: syn::parse(left.into())?,
-                        op,
-                        right: syn::parse(right.into())?,
-                    }
-                    .to_token_stream(),
-                )
-            })() {
-                Ok(x) => x,
-                Err(e) => e.into_compile_error(),
-            },
+            _ => r(op, left, right),
         }
     }
 
@@ -154,10 +182,13 @@ impl Sub for Saturating {
     }
 }
 
-struct Algebraic;
+struct Algebraic(Vec<BinOp>);
 impl Sub for Algebraic {
     fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
         use syn::BinOp::*;
+        if contains(&self.0, op) {
+            return r(op, left, right);
+        }
         match op {
             Add(_) => quote!(core::intrinsics::fadd_algebraic(#left, #right)),
             Sub(_) => quote!(core::intrinsics::fsub_algebraic(#left, #right)),
@@ -165,20 +196,12 @@ impl Sub for Algebraic {
             Div(_) => quote!(core::intrinsics::fdiv_algebraic(#left, #right)),
             Rem(_) => quote!(core::intrinsics::frem_algebraic(#left, #right)),
 
-            _ => match (|| {
-                syn::Result::Ok(
-                    ExprBinary {
-                        attrs: Default::default(),
-                        left: syn::parse(left.into())?,
-                        op,
-                        right: syn::parse(right.into())?,
-                    }
-                    .to_token_stream(),
-                )
-            })() {
-                Ok(x) => x,
-                Err(e) => e.into_compile_error(),
-            },
+            AddAssign(_) => quote!(#left = core::intrinsics::fadd_algebraic(#left, #right)),
+            SubAssign(_) => quote!(#left = core::intrinsics::fsub_algebraic(#left, #right)),
+            MulAssign(_) => quote!(#left = core::intrinsics::fmul_algebraic(#left, #right)),
+            DivAssign(_) => quote!(#left = core::intrinsics::fdiv_algebraic(#left, #right)),
+            RemAssign(_) => quote!(#left = core::intrinsics::frem_algebraic(#left, #right)),
+            _ => r(op, left, right),
         }
     }
 
@@ -187,10 +210,13 @@ impl Sub for Algebraic {
     }
 }
 
-struct Fast;
+struct Fast(Vec<BinOp>);
 impl Sub for Fast {
     fn sub_bin(&self, op: BinOp, left: TokenStream, right: TokenStream) -> TokenStream {
         use syn::BinOp::*;
+        if contains(&self.0, op) {
+            return r(op, left, right);
+        }
         match op {
             Add(_) => quote!(core::intrinsics::fadd_fast(#left, #right)),
             Sub(_) => quote!(core::intrinsics::fsub_fast(#left, #right)),
@@ -199,20 +225,12 @@ impl Sub for Fast {
             Rem(_) => quote!(core::intrinsics::frem_fast(#left, #right)),
             Eq(_) => quote!(/* eq */ ((#left) + 0.0).to_bits() == ((#right) + 0.0).to_bits()),
 
-            _ => match (|| {
-                syn::Result::Ok(
-                    ExprBinary {
-                        attrs: Default::default(),
-                        left: syn::parse(left.into())?,
-                        op,
-                        right: syn::parse(right.into())?,
-                    }
-                    .to_token_stream(),
-                )
-            })() {
-                Ok(x) => x,
-                Err(e) => e.into_compile_error(),
-            },
+            AddAssign(_) => quote!(#left = core::intrinsics::fadd_fast(#left, #right)),
+            SubAssign(_) => quote!(#left = core::intrinsics::fsub_fast(#left, #right)),
+            MulAssign(_) => quote!(#left = core::intrinsics::fmul_fast(#left, #right)),
+            DivAssign(_) => quote!(#left = core::intrinsics::fdiv_fast(#left, #right)),
+            RemAssign(_) => quote!(#left = core::intrinsics::frem_fast(#left, #right)),
+            _ => r(op, left, right),
         }
     }
 
@@ -556,22 +574,40 @@ pub fn math(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 #[proc_macro]
 pub fn fast(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    walk!(input, Fast {})
+    walk!(input, Fast(vec![]))
 }
 
 #[proc_macro]
 pub fn algebraic(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    walk!(input, Algebraic {})
+    walk!(input, Algebraic(vec![]))
 }
 
 #[proc_macro]
 pub fn wrapping(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    walk!(input, Wrapping {})
+    walk!(input, Wrapping(vec![]))
 }
 
 #[proc_macro]
 pub fn saturating(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    walk!(input, Saturating {})
+    walk!(input, Saturating(vec![]))
+}
+struct Args {
+    ty: Ident,
+    exclude: Vec<BinOp>,
+}
+impl Parse for Args {
+    fn parse(input: parse::ParseStream) -> Result<Self> {
+        let ty = input.parse()?;
+        let mut exclude = vec![];
+        if input.peek(Token![,]) {
+            let _: Token![,] = input.parse()?;
+            let _: Ident = input.parse()?;
+            while let Ok(x) = input.parse::<BinOp>() {
+                exclude.push(x);
+            }
+        }
+        Ok(Self { ty, exclude })
+    }
 }
 
 #[proc_macro_attribute]
@@ -579,12 +615,13 @@ pub fn apply(
     args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    match &*args.to_string() {
-        "basic" | "" => math(input),
-        "fast" => fast(input),
-        "algebraic" => algebraic(input),
-        "wrapping" => wrapping(input),
-        "saturating" => saturating(input),
+    let Args { ty, exclude }: Args = parse_macro_input!(args);
+    match &*ty.to_string() {
+        "basic" | "" => walk!(input, Basic {}),
+        "fast" => walk!(input, Fast(exclude.clone())),
+        "algebraic" => walk!(input, Algebraic(exclude.clone())),
+        "wrapping" => walk!(input, Wrapping(exclude.clone())),
+        "saturating" => walk!(input, Saturating(exclude.clone())),
         _ => {
             quote! { compile_error!("type must be {fast, basic, algebraic, wrapping, saturating}") }
                 .into()

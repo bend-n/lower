@@ -1,6 +1,6 @@
 [package]
 name = "lower-macros"
-version = "0.2.13"
+version = "0.2.14"
 authors = ["bend-n <bend.n@outlook.com>"]
 description = "desugar math where the compiler wont"
 edition = "2024"
@@ -10,7 +10,7 @@ license = "MIT"
 [dependencies]
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
-syn = { version = "3.0.5", features = ["full"] }
+syn = { version = "3.0.6", features = ["full"] }
 
 [lib]
 proc-macro = true
