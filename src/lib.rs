@@ -485,14 +485,15 @@ fn walk_item(sub: &impl Sub, x: Item) -> TokenStream {
         }
         Item::Impl(ItemImpl {
             attrs,
-            unsafety,
             modifiers:
                 ImplModifiers {
                     defaultness,
                     polarity,
                     ..
                 },
+            unsafety,
             generics,
+            impl_token,
             trait_,
             self_ty,
             items,
@@ -523,8 +524,8 @@ fn walk_item(sub: &impl Sub, x: Item) -> TokenStream {
                 }
                 e => quote!(#e),
             });
-            let trait_ = trait_.map(|(n, fr)| quote!(#n for #fr));
-            quote!(#(#attrs)* #unsafety #polarity #defaultness impl #generics #trait_ #self_ty { #(#items)* })
+            let trait_ = trait_.map(|(n, fr)| quote!(#n #fr));
+            quote!(#(#attrs)* #polarity #defaultness #unsafety #impl_token #generics #trait_ #self_ty { #(#items)* })
         }
         Item::Mod(ItemMod {
             attrs,
